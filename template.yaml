@@ -32,7 +32,7 @@ Resources:
       FunctionName: GitHubTrafficTracker
       CodeUri: src/function/
       Handler: index.lambda_handler
-      Runtime: python3.12
+      Runtime: python3.11
       Timeout: !Ref LambdaTimeout
       MemorySize: !Ref LambdaMemory
       Environment:
