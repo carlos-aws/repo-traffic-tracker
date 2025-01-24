@@ -13,24 +13,20 @@ This solution deploys a serverless application that tracks traffic statistics fo
 
 ## Prerequisites
 
-1. An AWS account with permissions to create:
-   - Lambda functions
-   - IAM roles
-   - CloudWatch log groups
-   - EventBridge rules
-   - Systems Manager parameters
-
+1. An AWS account with access to:
+   - AWS CloudShell or AWS CLI
+   - AWS SAM CLI (pre-installed in CloudShell)
+   - GitHub repositories you want to track
+   
 2. A GitHub personal access token with the following permissions:
    - `repo` scope for private repositories
    - `public_repo` scope for public repositories
 
-3. AWS CLI installed and configured (if deploying via CLI)
-
-## Setup Instructions
+## Deployment Instructions
 
 ### 1. Create GitHub Access Token Secret
 
-Before deploying the CloudFormation template, you need to create a secret in AWS Secrets Manager:
+Before deploying the SAM template, create a secret in AWS Secrets Manager:
 
 1. Go to AWS Secrets Manager console
 2. Click "Store a new secret"
@@ -41,48 +37,55 @@ Before deploying the CloudFormation template, you need to create a secret in AWS
     "repositories": [
         {
             "repository": "owner1/repo1",
-            "accesstoken": "github_access_token_xxx"
+            "accesstoken": "github_pat_xxx"
         }
     ],
-    "defaulttoken": "github_access_token_yyy"
+    "defaulttoken": "github_pat_yyy"
 }
 ```
 5. Name the secret `GitHubTrafficAccessTokens`
 6. Complete the secret creation process
 
-### 2. Deploy the Solution
+### 2. Deploy Using AWS CloudShell
 
-#### Option A: Using AWS Console
+1. Open AWS CloudShell:
+   - Go to AWS Management Console
+   - Click the CloudShell icon in the top navigation bar
 
-1. Go to AWS CloudFormation console
-2. Click "Create stack" and choose "With new resources (standard)"
-3. Upload the template file or paste its contents
-4. Fill in the parameters:
-   - `GitHubRepositories`: Semicolon-separated list of repositories (e.g., "owner1/repo1;owner2/repo2")
-   - `LambdaTimeout`: Time in seconds before Lambda function times out (default: 300)
-   - `LambdaMemory`: Memory allocation for Lambda function in MB (default: 128)
-   - `LogRetentionDays`: Number of days to retain CloudWatch logs (default: 30)
-5. Click through the remaining steps and create the stack
-
-#### Option B: Using AWS CLI
-
+2. Clone and prepare the repository:
 ```bash
-aws cloudformation create-stack \
-  --stack-name github-traffic-tracker \
-  --template-body file://templates/github-traffic-tracker.yaml \
-  --parameters \
-    ParameterKey=GitHubRepositories,ParameterValue="owner1/repo1;owner2/repo2" \
-    ParameterKey=LambdaTimeout,ParameterValue=300 \
-    ParameterKey=LambdaMemory,ParameterValue=128 \
-    ParameterKey=LogRetentionDays,ParameterValue=30 \
-  --capabilities CAPABILITY_IAM
+# Clone the repository
+git clone https://github.com/carlos-aws/repo-traffic-tracker.git
+cd github-traffic-tracker
+
+# Build the SAM application
+sam build
 ```
+
+3. Deploy the application:
+```bash
+sam deploy --guided
+```
+
+4. During the guided deployment, you'll be prompted for parameters:
+   - Stack Name: `github-traffic-tracker` (recommended)
+   - AWS Region: Choose your preferred region
+   - Parameter GitHubRepositories: Enter semicolon-separated list of repositories (e.g., "owner1/repo1;owner2/repo2")
+   - Parameter LambdaTimeout: Enter timeout in seconds (default: 300)
+   - Parameter LambdaMemory: Enter memory in MB (default: 128)
+   - Parameter LogRetentionDays: Enter log retention period (default: 1827)
+   - Confirm changes before deploy: Yes
+   - Allow SAM CLI IAM role creation: Yes
+   - Disable rollback: No
+   - Save arguments to configuration file: Yes
+   - SAM configuration file: samconfig.toml
+   - SAM configuration environment: default
 
 ## Monitoring and Metrics
 
 ### CloudWatch Metrics
 
-The solution publishes the following metrics to CloudWatch:
+The solution publishes the following metrics:
 
 Namespace: `GitHubTrafficTracker`
 
@@ -100,17 +103,18 @@ Logs are stored in two locations:
 1. `/aws/lambda/GitHubTrafficTracker`: Lambda function logs
 2. `github-traffic-tracker`: Raw GitHub traffic data logs
 
-## Updating Repository List
+## Managing the Solution
 
-To update the list of tracked repositories:
+### Updating Repository List
 
-1. Go to AWS Systems Manager Parameter Store
-2. Find the parameter named `GitHubTrafficRepos`
-3. Click "Edit"
-4. Enter new semicolon-separated list of repositories
-5. Click "Save changes"
+1. Open AWS Systems Manager Console
+2. Go to Parameter Store
+3. Find parameter named `GitHubTrafficRepos`
+4. Click "Edit"
+5. Update the semicolon-separated list
+6. Click "Save changes"
 
-Alternatively, using AWS CLI:
+Or using CloudShell:
 ```bash
 aws ssm put-parameter \
   --name GitHubTrafficRepos \
@@ -119,12 +123,10 @@ aws ssm put-parameter \
   --overwrite
 ```
 
-## Updating Access Tokens
+### Updating Access Tokens
 
-To update GitHub access tokens:
-
-1. Go to AWS Secrets Manager console
-2. Find the secret named `GitHubTrafficAccessTokens`
+1. Open AWS Secrets Manager Console
+2. Find secret named `GitHubTrafficAccessTokens`
 3. Click "Retrieve secret value"
 4. Click "Edit"
 5. Update the JSON with new tokens
@@ -136,7 +138,7 @@ To update GitHub access tokens:
 
 1. **Lambda Function Timeout**
    - Symptom: Function execution incomplete
-   - Solution: Increase the `LambdaTimeout` parameter
+   - Solution: Increase the `LambdaTimeout` parameter during deployment
 
 2. **Invalid Repository Format**
    - Symptom: Error logs in CloudWatch
@@ -148,35 +150,46 @@ To update GitHub access tokens:
 
 ### Checking Logs
 
-To view execution logs:
-1. Go to CloudWatch console
-2. Select "Log groups"
-3. Check either:
-   - `/aws/lambda/GitHubTrafficTracker` for function logs
-   - `github-traffic-tracker` for traffic data
+Using CloudShell:
+```bash
+# View Lambda function logs
+aws logs tail /aws/lambda/GitHubTrafficTracker --follow
+
+# View traffic data logs
+aws logs tail github-traffic-tracker --follow
+```
+
+Or through AWS Console:
+1. Open CloudWatch Console
+2. Go to Log Groups
+3. Select either:
+   - `/aws/lambda/GitHubTrafficTracker`
+   - `github-traffic-tracker`
 
 ## Cleanup
 
-To remove the solution:
+To remove all resources created by this solution:
 
-1. Using AWS Console:
-   - Go to CloudFormation console
-   - Select the stack
-   - Click "Delete"
-
-2. Using AWS CLI:
+Using CloudShell:
 ```bash
-aws cloudformation delete-stack --stack-name github-traffic-tracker
+sam delete
 ```
 
-Note: The `GitHubTrafficAccessTokens` secret is not managed by CloudFormation and must be deleted separately if desired.
+Or manually:
+1. Open CloudFormation Console
+2. Select stack named `github-traffic-tracker`
+3. Click "Delete"
+4. Click "Delete stack"
+
+Note: The `GitHubTrafficAccessTokens` secret is not managed by SAM and must be deleted separately if desired.
 
 ## Security Considerations
 
-- The solution uses AWS Secrets Manager to securely store GitHub access tokens
+- GitHub access tokens are stored securely in AWS Secrets Manager
 - IAM roles follow the principle of least privilege
 - All data is encrypted at rest using AWS default encryption
-- CloudWatch logs are retained according to the specified retention period
+- CloudWatch logs are retained according to specified retention period
+- Function runs within a VPC-isolated environment
 
 ## License
 
