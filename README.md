@@ -52,18 +52,16 @@ Before deploying the SAM template, create a secret in AWS Secrets Manager:
    - Go to AWS Management Console
    - Click the CloudShell icon in the top navigation bar
 
-2. Clone and prepare the repository:
+2. Clone and deploy:
 ```bash
 # Clone the repository
-git clone https://github.com/carlos-aws/repo-traffic-tracker.git
+git clone <repository-url>
 cd github-traffic-tracker
 
 # Build the SAM application
 sam build
-```
 
-3. Deploy the application:
-```bash
+# Deploy the application
 sam deploy --guided
 ```
 
