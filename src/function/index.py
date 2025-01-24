@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import boto3
 import requests
@@ -112,40 +112,69 @@ def publish_metrics(owner_repo, data_type, traffic_data):
         logger.warning(f"No {data_type} data found for {owner_repo}")
         return
 
-    # Find the most recent date in the data
-    latest_entry = max(data_array, key=lambda x: x["timestamp"])
+    # Sort entries by timestamp in descending order and take the 3 most recent
+    sorted_entries = sorted(
+        data_array,
+        key=lambda x: datetime.strptime(x["timestamp"], "%Y-%m-%dT%H:%M:%SZ"),
+        reverse=True,
+    )[:3]
 
-    # Prepare metrics for both count and uniques
-    metrics = [
-        {
-            "MetricName": data_type,
-            "Dimensions": [
-                {"Name": "type", "Value": "count"},
-                {"Name": "repository", "Value": owner_repo},
-            ],
-            "Value": latest_entry["count"],
-            "Timestamp": datetime.strptime(
-                latest_entry["timestamp"], "%Y-%m-%dT%H:%M:%SZ"
-            ),
-            "Unit": "Count",
-        },
-        {
-            "MetricName": data_type,
-            "Dimensions": [
-                {"Name": "type", "Value": "uniques"},
-                {"Name": "repository", "Value": owner_repo},
-            ],
-            "Value": latest_entry["uniques"],
-            "Timestamp": datetime.strptime(
-                latest_entry["timestamp"], "%Y-%m-%dT%H:%M:%SZ"
-            ),
-            "Unit": "Count",
-        },
-    ]
+    # Get current time for two-week validation
+    now = datetime.utcnow()
+    two_weeks_ago = now - timedelta(days=14)
+
+    # Prepare metrics for the 3 most recent entries
+    metrics = []
+    for entry in sorted_entries:
+        # Parse the timestamp
+        entry_timestamp = datetime.strptime(entry["timestamp"], "%Y-%m-%dT%H:%M:%SZ")
+
+        # Skip if entry is older than two weeks
+        if entry_timestamp < two_weeks_ago:
+            logger.warning(
+                f"Skipping {data_type} entry for {owner_repo} from {entry_timestamp} as it's older than two weeks"
+            )
+            continue
+
+        # Add count metric
+        metrics.append(
+            {
+                "MetricName": data_type,
+                "Dimensions": [
+                    {"Name": "type", "Value": "count"},
+                    {"Name": "repository", "Value": owner_repo},
+                ],
+                "Value": entry["count"],
+                "Timestamp": entry_timestamp,
+                "Unit": "Count",
+            }
+        )
+
+        # Add uniques metric
+        metrics.append(
+            {
+                "MetricName": data_type,
+                "Dimensions": [
+                    {"Name": "type", "Value": "uniques"},
+                    {"Name": "repository", "Value": owner_repo},
+                ],
+                "Value": entry["uniques"],
+                "Timestamp": entry_timestamp,
+                "Unit": "Count",
+            }
+        )
+
+    if not metrics:
+        logger.warning(f"No recent {data_type} metrics to publish for {owner_repo}")
+        return
 
     try:
-        cloudwatch.put_metric_data(Namespace="GitHubTrafficTracker", MetricData=metrics)
-        logger.info(f"Successfully published {data_type} metrics for {owner_repo}")
+        cloudwatch.put_metric_data(
+            Namespace="GitHubTrafficTracker", MetricData=metrics
+        )
+        logger.info(
+            f"Successfully published {len(metrics)//2} most recent {data_type} entries for {owner_repo}"
+        )
     except Exception as e:
         logger.error(f"Error publishing metrics for {owner_repo}: {str(e)}")
         raise
