@@ -47,14 +47,6 @@ def get_token_for_repo(tokens, repo):
     return tokens.get("defaulttoken")
 
 
-def ensure_log_group_exists(log_group_name):
-    """Ensure CloudWatch Logs group exists"""
-    try:
-        logs_client.create_log_group(logGroupName=log_group_name)
-    except logs_client.exceptions.ResourceAlreadyExistsException:
-        pass
-
-
 def ensure_log_stream_exists(log_group_name, log_stream_name):
     """Ensure CloudWatch Logs stream exists"""
     try:
@@ -63,14 +55,16 @@ def ensure_log_stream_exists(log_group_name, log_stream_name):
         )
     except logs_client.exceptions.ResourceAlreadyExistsException:
         pass
+    except Exception as e:
+        logger.error(f"Error creating log stream: {str(e)}")
+        raise
 
 
 def publish_to_cloudwatch_logs(log_group_name, log_stream_name, message):
     """Publish logs to CloudWatch Logs"""
-    ensure_log_group_exists(log_group_name)
-    ensure_log_stream_exists(log_group_name, log_stream_name)
-
     try:
+        ensure_log_stream_exists(log_group_name, log_stream_name)
+
         logs_client.put_log_events(
             logGroupName=log_group_name,
             logStreamName=log_stream_name,
@@ -83,6 +77,7 @@ def publish_to_cloudwatch_logs(log_group_name, log_stream_name, message):
         )
     except Exception as e:
         logger.error(f"Error publishing to CloudWatch Logs: {str(e)}")
+        raise
 
 
 def fetch_github_traffic_data(owner_repo, access_token, data_type):
